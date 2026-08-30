@@ -567,6 +567,10 @@ export function segmentExposure(
   const midLat = (a.lat + b.lat) / 2;
   const midLon = (a.lon + b.lon) / 2;
 
+  // A path that stays above the weather deck (both ends >= 15 km, e.g. the
+  // LEO -> HAPS laser) is effectively immune to cloud, rain and storm cells.
+  const aboveWeather = Math.min(a.altKm, b.altKm) >= 15 ? 0.05 : 1;
+
   let exposure = 0;
   const cells: WeatherCell[] = [];
   for (const c of weather) {
@@ -580,7 +584,7 @@ export function segmentExposure(
     if (d > radius) continue;
     cells.push(c);
     const falloff = 1 - d / radius;
-    exposure = Math.max(exposure, c.severity * (0.45 + 0.55 * falloff));
+    exposure = Math.max(exposure, c.severity * (0.45 + 0.55 * falloff) * aboveWeather);
   }
   return { exposure, cells };
 }
