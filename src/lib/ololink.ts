@@ -330,7 +330,37 @@ function seg(id: string, from: string, to: string, tech: Tech): Segment {
   return { id, from, to, tech };
 }
 
-/** Every orchestrated path OloLink can choose from. */
+/**
+ * Every generated regional site gets the same four-tier chain, fed by the
+ * geographically closest LEO satellite of the constellation.
+ */
+function generateSiteSegments(): Segment[] {
+  const sats = ASSETS.filter((a) => a.kind === 'satellite');
+  const out: Segment[] = [];
+  for (const haps of ASSETS) {
+    if (haps.kind !== 'haps' || !haps.id.startsWith('haps-gen-')) continue;
+    const n = haps.id.replace('haps-gen-', '');
+    const drone = `drone-gen-${n}`;
+    const ground = `ground-gen-${n}`;
+    if (!ASSET_BY_ID[drone] || !ASSET_BY_ID[ground]) continue;
+    const nearest = sats
+      .slice()
+      .sort(
+        (a, b) =>
+          geoSep(a.lat, a.lon, haps.lat, haps.lon) - geoSep(b.lat, b.lon, haps.lat, haps.lon)
+      )
+      .slice(0, 2);
+    nearest.forEach((s, i) => {
+      out.push(seg(`s-${s.id}-${haps.id}-${i}`, s.id, haps.id, 'OPTICAL'));
+    });
+    out.push(seg(`s-${haps.id}-${drone}`, haps.id, drone, 'MICROWAVE'));
+    out.push(seg(`s-${drone}-${ground}-laser`, drone, ground, 'OPTICAL'));
+    out.push(seg(`s-${drone}-${ground}`, drone, ground, 'RF'));
+  }
+  return out;
+}
+
+
 /**
  * Communication architecture — the data flow is strictly
  *   LEO → HAPS → Relay Drone → Ground Station (→ customer fiber handoff)
