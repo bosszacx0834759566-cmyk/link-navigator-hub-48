@@ -331,27 +331,35 @@ function seg(id: string, from: string, to: string, tech: Tech): Segment {
 }
 
 /** Every orchestrated path OloLink can choose from. */
+/**
+ * Communication architecture — the data flow is strictly
+ *   LEO → HAPS → Relay Drone → Ground Station (→ customer fiber handoff)
+ *
+ *  LEO  → HAPS   : optical laser only (line-of-sight gated)
+ *  HAPS → Drone  : RF / microwave only — never laser
+ *  Drone→ Ground : laser (optical) or RF / microwave
+ */
 export const SEGMENTS: Segment[] = [
   // ---- Thailand operational region
-  seg('s-satth1-gsth', 'sat-th-1', 'gs-th', 'OPTICAL'),
-  seg('s-satth1-hapsth', 'sat-th-1', 'haps-th', 'FSO'),
-  seg('s-satth2-hapsth', 'sat-th-2', 'haps-th', 'FSO'),
+  seg('s-satth1-hapsth', 'sat-th-1', 'haps-th', 'OPTICAL'),
+  seg('s-satth2-hapsth', 'sat-th-2', 'haps-th', 'OPTICAL'),
   seg('s-hapsth-drnth', 'haps-th', 'drn-th', 'MICROWAVE'),
+  seg('s-drnth-gsth-laser', 'drn-th', 'gs-th', 'OPTICAL'),
   seg('s-drnth-gsth', 'drn-th', 'gs-th', 'RF'),
-  seg('s-drnth-gsth-fso', 'drn-th', 'gs-th', 'FSO'),
-  seg('s-hapsth-gsth', 'haps-th', 'gs-th', 'RF'),
   seg('s-gsth-custh', 'gs-th', 'cus-th', 'FIBER'),
 
   // ---- United States operational region
-  seg('s-satus1-gsus', 'sat-us-1', 'gs-us', 'OPTICAL'),
-  seg('s-satus1-hapsus', 'sat-us-1', 'haps-us', 'FSO'),
-  seg('s-satus2-hapsus', 'sat-us-2', 'haps-us', 'FSO'),
+  seg('s-satus1-hapsus', 'sat-us-1', 'haps-us', 'OPTICAL'),
+  seg('s-satus2-hapsus', 'sat-us-2', 'haps-us', 'OPTICAL'),
   seg('s-hapsus-drnus', 'haps-us', 'drn-us', 'MICROWAVE'),
+  seg('s-drnus-gsus-laser', 'drn-us', 'gs-us', 'OPTICAL'),
   seg('s-drnus-gsus', 'drn-us', 'gs-us', 'RF'),
-  seg('s-drnus-gsus-fso', 'drn-us', 'gs-us', 'FSO'),
-  seg('s-hapsus-gsus', 'haps-us', 'gs-us', 'RF'),
   seg('s-gsus-cusus', 'gs-us', 'cus-us', 'FIBER'),
+
+  // ---- generated regional sites: same four-tier architecture
+  ...generateSiteSegments(),
 ];
+
 
 const SEGMENT_BY_ID: Record<string, Segment> = Object.fromEntries(
   SEGMENTS.map((s) => [s.id, s])
