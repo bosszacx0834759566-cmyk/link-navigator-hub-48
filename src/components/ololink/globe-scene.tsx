@@ -2067,11 +2067,12 @@ function SceneContent({
         if (!visibleIds.has(from.id) || !visibleIds.has(to.id)) return false;
         // an unusable transport is simply not transmitting — nothing to draw
         if (l.status === 'UNAVAILABLE') return false;
+        if (!state.techFilter[l.segment.tech]) return false;
         // at global range only the active data-flow chain is drawn
         if (!detailed) return routeSegmentIds.has(l.segment.id);
         return true;
       }),
-    [links, visibleIds, detailed, routeSegmentIds]
+    [links, visibleIds, detailed, routeSegmentIds, state.techFilter]
   );
 
   const scopedRegions = useMemo(
