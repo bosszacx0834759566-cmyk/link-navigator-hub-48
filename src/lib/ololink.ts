@@ -601,7 +601,7 @@ export function linkStates(
     const { exposure, cells } = segmentExposure(segment, profile.weather);
     const sensitivity = TECH_SENSITIVITY[segment.tech];
     const impact = Math.round(exposure * sensitivity);
-    const declaredBlock = profile.blockedTech.includes(segment.tech) && impact > 0;
+    const declaredBlock = profile.blockedTech.includes(segment.tech) && impact >= 12;
 
     let status: LinkStatus;
     if (rerouting?.has(segment.id)) status = 'REROUTING';
