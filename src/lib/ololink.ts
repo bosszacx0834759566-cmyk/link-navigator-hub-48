@@ -52,8 +52,8 @@ export const TECH_META: Record<
   OPTICAL: {
     label: 'Optical Laser',
     short: 'Optical',
-    color: '#38bdf8',
-    desc: 'Coherent laser downlink, highest capacity, weather sensitive',
+    color: '#22c55e',
+    desc: 'Coherent laser link, highest capacity, requires clear line-of-sight',
     family: 'optical',
   },
   FSO: {
@@ -330,28 +330,66 @@ function seg(id: string, from: string, to: string, tech: Tech): Segment {
   return { id, from, to, tech };
 }
 
-/** Every orchestrated path OloLink can choose from. */
+/**
+ * Every generated regional site gets the same four-tier chain, fed by the
+ * geographically closest LEO satellite of the constellation.
+ */
+function generateSiteSegments(): Segment[] {
+  const sats = ASSETS.filter((a) => a.kind === 'satellite');
+  const out: Segment[] = [];
+  for (const haps of ASSETS) {
+    if (haps.kind !== 'haps' || !haps.id.startsWith('haps-gen-')) continue;
+    const n = haps.id.replace('haps-gen-', '');
+    const drone = `drone-gen-${n}`;
+    const ground = `ground-gen-${n}`;
+    if (!ASSET_BY_ID[drone] || !ASSET_BY_ID[ground]) continue;
+    const nearest = sats
+      .slice()
+      .sort(
+        (a, b) =>
+          geoSep(a.lat, a.lon, haps.lat, haps.lon) - geoSep(b.lat, b.lon, haps.lat, haps.lon)
+      )
+      .slice(0, 2);
+    nearest.forEach((s, i) => {
+      out.push(seg(`s-${s.id}-${haps.id}-${i}`, s.id, haps.id, 'OPTICAL'));
+    });
+    out.push(seg(`s-${haps.id}-${drone}`, haps.id, drone, 'MICROWAVE'));
+    out.push(seg(`s-${drone}-${ground}-laser`, drone, ground, 'OPTICAL'));
+    out.push(seg(`s-${drone}-${ground}`, drone, ground, 'RF'));
+  }
+  return out;
+}
+
+
+/**
+ * Communication architecture — the data flow is strictly
+ *   LEO → HAPS → Relay Drone → Ground Station (→ customer fiber handoff)
+ *
+ *  LEO  → HAPS   : optical laser only (line-of-sight gated)
+ *  HAPS → Drone  : RF / microwave only — never laser
+ *  Drone→ Ground : laser (optical) or RF / microwave
+ */
 export const SEGMENTS: Segment[] = [
   // ---- Thailand operational region
-  seg('s-satth1-gsth', 'sat-th-1', 'gs-th', 'OPTICAL'),
-  seg('s-satth1-hapsth', 'sat-th-1', 'haps-th', 'FSO'),
-  seg('s-satth2-hapsth', 'sat-th-2', 'haps-th', 'FSO'),
+  seg('s-satth1-hapsth', 'sat-th-1', 'haps-th', 'OPTICAL'),
+  seg('s-satth2-hapsth', 'sat-th-2', 'haps-th', 'OPTICAL'),
   seg('s-hapsth-drnth', 'haps-th', 'drn-th', 'MICROWAVE'),
+  seg('s-drnth-gsth-laser', 'drn-th', 'gs-th', 'OPTICAL'),
   seg('s-drnth-gsth', 'drn-th', 'gs-th', 'RF'),
-  seg('s-drnth-gsth-fso', 'drn-th', 'gs-th', 'FSO'),
-  seg('s-hapsth-gsth', 'haps-th', 'gs-th', 'RF'),
   seg('s-gsth-custh', 'gs-th', 'cus-th', 'FIBER'),
 
   // ---- United States operational region
-  seg('s-satus1-gsus', 'sat-us-1', 'gs-us', 'OPTICAL'),
-  seg('s-satus1-hapsus', 'sat-us-1', 'haps-us', 'FSO'),
-  seg('s-satus2-hapsus', 'sat-us-2', 'haps-us', 'FSO'),
+  seg('s-satus1-hapsus', 'sat-us-1', 'haps-us', 'OPTICAL'),
+  seg('s-satus2-hapsus', 'sat-us-2', 'haps-us', 'OPTICAL'),
   seg('s-hapsus-drnus', 'haps-us', 'drn-us', 'MICROWAVE'),
+  seg('s-drnus-gsus-laser', 'drn-us', 'gs-us', 'OPTICAL'),
   seg('s-drnus-gsus', 'drn-us', 'gs-us', 'RF'),
-  seg('s-drnus-gsus-fso', 'drn-us', 'gs-us', 'FSO'),
-  seg('s-hapsus-gsus', 'haps-us', 'gs-us', 'RF'),
   seg('s-gsus-cusus', 'gs-us', 'cus-us', 'FIBER'),
+
+  // ---- generated regional sites: same four-tier architecture
+  ...generateSiteSegments(),
 ];
+
 
 const SEGMENT_BY_ID: Record<string, Segment> = Object.fromEntries(
   SEGMENTS.map((s) => [s.id, s])
@@ -421,18 +459,18 @@ export const SCENARIOS: Record<ScenarioId, ScenarioProfile> = {
     id: 'clear',
     name: 'Clear Sky',
     short: 'CLEAR',
-    summary: 'Atmosphere transparent. Direct optical downlink at full capacity.',
+    summary: 'Atmosphere transparent. LEO → HAPS → Drone → Ground carried end-to-end on laser.',
     severity: 8,
     networkHealth: 'NOMINAL',
-    systemMode: 'DIRECT OPTICAL',
+    systemMode: 'OPTICAL CHAIN',
     telemetry: { bandwidth: 10.0, latency: 14, packetLoss: 0.02, signal: 98, availability: 99.98 },
-    route: ['sat-th-1', 'gs-th', 'cus-th'],
-    routeSegmentIds: ['s-satth1-gsth', 's-gsth-custh'],
+    route: ['sat-th-1', 'haps-th', 'drn-th', 'gs-th', 'cus-th'],
+    routeSegmentIds: ['s-satth1-hapsth', 's-hapsth-drnth', 's-drnth-gsth-laser', 's-gsth-custh'],
     blockedTech: [],
     weather: [],
     ai: {
       analysis: ['Atmospheric clarity optimal', 'Optical margin +7.4 dB', 'No obstruction forecast (90 min)'],
-      recommendation: ['Hold direct optical path', 'Keep adaptive layer on standby'],
+      recommendation: ['Hold optical chain LEO → HAPS', 'Laser hop Drone-1 → GS-1'],
       confidence: 99,
       action: 'HOLD ROUTE',
     },
@@ -448,7 +486,7 @@ export const SCENARIOS: Record<ScenarioId, ScenarioProfile> = {
     systemMode: 'ADAPTIVE RELAY',
     telemetry: { bandwidth: 6.4, latency: 38, packetLoss: 0.9, signal: 71, availability: 97.2 },
     route: ['sat-th-1', 'haps-th', 'drn-th', 'gs-th', 'cus-th'],
-    routeSegmentIds: ['s-satth1-hapsth', 's-hapsth-drnth', 's-drnth-gsth-fso', 's-gsth-custh'],
+    routeSegmentIds: ['s-satth1-hapsth', 's-hapsth-drnth', 's-drnth-gsth', 's-gsth-custh'],
     blockedTech: ['OPTICAL'],
     weather: CLOUD_CELLS,
     ai: {
@@ -529,6 +567,10 @@ export function segmentExposure(
   const midLat = (a.lat + b.lat) / 2;
   const midLon = (a.lon + b.lon) / 2;
 
+  // A path that stays above the weather deck (both ends >= 15 km, e.g. the
+  // LEO -> HAPS laser) is effectively immune to cloud, rain and storm cells.
+  const aboveWeather = Math.min(a.altKm, b.altKm) >= 15 ? 0.05 : 1;
+
   let exposure = 0;
   const cells: WeatherCell[] = [];
   for (const c of weather) {
@@ -542,7 +584,7 @@ export function segmentExposure(
     if (d > radius) continue;
     cells.push(c);
     const falloff = 1 - d / radius;
-    exposure = Math.max(exposure, c.severity * (0.45 + 0.55 * falloff));
+    exposure = Math.max(exposure, c.severity * (0.45 + 0.55 * falloff) * aboveWeather);
   }
   return { exposure, cells };
 }
@@ -559,7 +601,7 @@ export function linkStates(
     const { exposure, cells } = segmentExposure(segment, profile.weather);
     const sensitivity = TECH_SENSITIVITY[segment.tech];
     const impact = Math.round(exposure * sensitivity);
-    const declaredBlock = profile.blockedTech.includes(segment.tech) && impact > 0;
+    const declaredBlock = profile.blockedTech.includes(segment.tech) && impact >= 12;
 
     let status: LinkStatus;
     if (rerouting?.has(segment.id)) status = 'REROUTING';

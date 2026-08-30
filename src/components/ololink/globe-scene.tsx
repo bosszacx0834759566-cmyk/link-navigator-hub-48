@@ -35,6 +35,7 @@ import {
 } from '@/lib/ololink';
 import type { OloLinkState, Selection } from '@/hooks/use-ololink';
 import { LabelLayer, LabelProjector, useLabel } from '@/components/ololink/label-layer';
+import { CommLink, DataFlow } from '@/components/ololink/comm-links';
 import {
   
   OPERATIONAL_VIEW,
@@ -2064,11 +2065,14 @@ function SceneContent({
         const to = ASSET_BY_ID[l.segment.to];
         if (!from || !to) return false;
         if (!visibleIds.has(from.id) || !visibleIds.has(to.id)) return false;
-        // at global range only the primary space-to-ground path is drawn
-        if (!detailed) return from.kind === 'satellite' && to.kind === 'ground';
+        // an unusable transport is simply not transmitting — nothing to draw
+        if (l.status === 'UNAVAILABLE') return false;
+        if (!state.techFilter[l.segment.tech]) return false;
+        // at global range only the active data-flow chain is drawn
+        if (!detailed) return routeSegmentIds.has(l.segment.id);
         return true;
       }),
-    [links, visibleIds, detailed]
+    [links, visibleIds, detailed, routeSegmentIds, state.techFilter]
   );
 
   const scopedRegions = useMemo(
@@ -2114,6 +2118,24 @@ function SceneContent({
 
       {/* continuous LEO propagation — updates the live position map each frame */}
       <OrbitDriver state={state} live={live} />
+
+      {/* communication architecture: LEO -> HAPS -> Drone -> Ground Station */}
+      {layers.routes && (
+        <>
+          {visibleLinks.map((l) => (
+            <CommLink
+              key={l.segment.id}
+              link={l}
+              live={live}
+              highlighted={highlightIds.has(l.segment.id) || routeSegmentIds.has(l.segment.id)}
+              selected={selection?.type === 'link' && selection.id === l.segment.id}
+              onSelect={select}
+            />
+          ))}
+          {/* payload pulses running the full chain end to end */}
+          <DataFlow segments={route} live={live} />
+        </>
+      )}
 
       {/* the fleet: 30 LEO / 15 HAPS / 15 relay drones / 15 ground stations */}
       {visibleAssets.map((a) => (
